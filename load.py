@@ -2,12 +2,64 @@ import pandas as pd
 import os
 import psycopg2
 from psycopg2 import errors
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from google.cloud import storage
 import io
 
 def load_data(processed_views):
-    # Environment variables
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME")
+    db_user = os.getenv("DB_USER")
+    db_pass = os.getenv("DB_PASSWORD")
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    bucket_name = os.getenv("GCP_BUCKET")
+    destination_blob = "processed_company_views.csv"
+
+    # --- Check credentials ---
+    if not credentials_path or not os.path.exists(credentials_path):
+        raise FileNotFoundError(f"❌ Google credentials not found: {credentials_path}")
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
+
+    # --- Connect to PostgreSQL ---
+    engine = create_engine(f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}")
+
+    # --- Create table if not exists ---
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS company_views_test (
+        view_id SERIAL PRIMARY KEY,
+        company VARCHAR(50),
+        views INTEGER,
+        time TIME,
+        date DATE
+    );
+    """
+    with engine.begin() as conn:
+        conn.execute(text(create_table_sql))
+    #with engine.connect() as conn:
+    """conn.execute(text(create_table_sql))
+    conn.commit()  # needed for DDL statements """
+
+    # --- Load data into PostgreSQL ---
+    processed_views = processed_views.rename(columns={"Time": "time", "Date": "date"})
+    processed_views.to_sql("company_views_test", con=engine, if_exists="append", index=False)
+    print("✅ Data loaded successfully into Postgres table 'company_views_test'")
+
+    # --- Read from Postgres ---
+    df = pd.read_sql("SELECT * FROM company_views_test", con=engine)
+
+    # --- Upload to Google Cloud Storage ---
+    client = storage.Client.from_service_account_json(credentials_path)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob)
+
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    blob.upload_from_string(csv_buffer.getvalue(), content_type="text/csv")
+
+    print(f"✅ Uploaded {len(df)} rows to gs://{bucket_name}/{destination_blob}")
+
+    """ # Environment variables
     db_host = os.getenv("DB_HOST")
     db_port = os.getenv("DB_PORT")
     db_name = os.getenv("DB_NAME")
@@ -43,13 +95,13 @@ def load_data(processed_views):
                             user=db_user, password=db_pass)
     cur = conn.cursor()
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS company_views (
+    """  CREATE TABLE IF NOT EXISTS company_views (
             view_id SERIAL PRIMARY KEY,
             company VARCHAR(50) NOT NULL,
             views INTEGER,
             time TIME,
             date DATE
-        );
+        ); """
     """)
     conn.commit()
     cur.close()
@@ -64,7 +116,23 @@ def load_data(processed_views):
 
     destination_blob = "processed_company_views_test.csv"
 
-    if not credentials_path or not bucket_name:
+
+     # --- Read from Postgres ---
+    df = pd.read_sql("SELECT * FROM company_views_test", con=engine)
+
+    # --- Upload to Google Cloud Storage ---
+    client = storage.Client.from_service_account_json(credentials_path)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob)
+
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    blob.upload_from_string(csv_buffer.getvalue(), content_type="text/csv")
+
+    print(f"✅ Uploaded {len(df)} rows to gs://{bucket_name}/{destination_blob}")
+
+ """
+    """ if not credentials_path or not bucket_name:
         raise ValueError("Set GOOGLE_APPLICATION_CREDENTIALS and GCP_BUCKET in your .env")
 
     client = client = storage.Client.from_service_account_json(credentials_path)
@@ -98,4 +166,4 @@ def load_data(processed_views):
     combined_df.to_csv(csv_buffer, index=False)
     blob.upload_from_string(csv_buffer.getvalue(), content_type="text/csv")
 
-    print(f"✅ Uploaded to gs://{bucket_name}/{destination_blob} with {len(combined_df)} rows")
+    print(f"✅ Uploaded to gs://{bucket_name}/{destination_blob} with {len(combined_df)} rows") """
