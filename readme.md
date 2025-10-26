@@ -18,15 +18,15 @@
     Idempotency
 
 ## The Architecture.
-The entire ETL Program is running on docker, and orchestrated using Apache Airflow. The task is to get the page view count from wikki and select only 5 comapnies and make little analysis. 
+The entire ETL Program is running on docker, and orchestrated using Apache Airflow. The task is to get the page view count from wikki and select only 5 companies and make little analysis. 
 
-<b>Extraction</b>
+<b>-Extraction</b>
     I extracted the file from the page. Although, the task was to extract for one particular day but i wanted the whole process to be dynamic so i wrote the Extraction code to be getting data from this year, this month and the recent uploads. that means it will repeat the process tomorrow, next month, next year and continously for every hour.
 
-<b>Transformation</b>
+<b>-Transformation</b>
     from the extraction, the filename i was able to extract the date and time. then i read the content of the file to get the company names, and views.
 
-<b>Loading</b> 
+<b>-Loading</b> 
     After the transformation, I uploaded the data to the postgres running on my docker, and to be able to use the data for analysis i created a data warehouse, where the power BI will read data from. To make sure the data and the warehouse data are same, I first uploaded the data to the postgres database, then copy all the data to the warehouse. There will be no duplicate.
 
 
